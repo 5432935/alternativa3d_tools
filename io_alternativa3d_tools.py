@@ -1,8 +1,8 @@
 bl_info = {
 	'name': 'Export: Alternativa3d Tools',
 	'author': 'David E Jones, http://davidejones.com',
-	'version': (1, 2, 0),
-	'blender': (2, 6, 3),
+	'version': (1, 2, 1),
+	'blender': (2, 6, 4),
 	'location': 'File > Import/Export;',
 	'description': 'Importer and exporter for Alternativa3D engine. Supports A3D and Actionscript"',
 	'warning': '',
@@ -106,6 +106,7 @@ def copyImages(obj,filepath):
 					rel = path_reference(bpy.path.abspath(uvimgs[x].filepath), source_dir, dest_dir, 'COPY', "", copy_set)
 	
 	path_reference_copy(copy_set)
+
 #==================================
 # AS EXPORTER
 #==================================
@@ -486,6 +487,24 @@ def getCommonData(Config,obj,flipUV=1):
 	new_index = 0
 	uvtex = mesh.uv_textures.active
 	
+	vgroups={}
+	bpy.ops.object.mode_set(mode='EDIT')
+	bpy.ops.mesh.select_all(action='DESELECT')
+	
+	selVerts = [v for v in verts]
+	
+	bpy.ops.mesh.select_all(action='SELECT')
+	
+	for vg in obj.vertex_groups:
+		vgroups[vg.name] = []
+	
+	for v in selVerts:
+		for n in v.groups:
+			vgrp = obj.vertex_groups[n.group]
+			vgroups[vgrp.name].append((n.group,v.index,n.weight))
+	
+	bpy.ops.object.mode_set(mode='OBJECT')
+
 	uvlayers={}
 	uvprocess=True
 	
@@ -499,13 +518,14 @@ def getCommonData(Config,obj,flipUV=1):
 		#uvlayer = mesh.tessface_uv_textures.active
 		
 		y=0
-		uc = 0
+		uc = 0		
 		for uvlayer in mesh.tessface_uv_textures:
-		
 			if Config.ExportUVLayer != None:
+				#1 = active uv layer, 2 = all uv layers
 				if Config.ExportUVLayer == 1:
 					if uc > 0:
 						uvprocess=False
+					uvprocess=uvlayer.active
 				elif Config.ExportUVLayer == 2:
 					uvprocess=True
 			else:
@@ -577,7 +597,12 @@ def getCommonData(Config,obj,flipUV=1):
 	
 	bb = getBoundBox(obj)
 	trns = getObjTransform(obj)
-	return vs,uvlayers,ins,nr,tan,bb,trns
+	
+	if Config.ReverseUVOrder != None:
+		if Config.ReverseUVOrder == 1:
+			uvlayers = reversed(uvlayers)
+	
+	return vs,uvlayers,ins,nr,tan,bb,trns,vgroups
 
 def getCommonDataNoBmesh(Config,obj,flipUV=1):
 	mesh = obj.data
@@ -592,6 +617,24 @@ def getCommonDataNoBmesh(Config,obj,flipUV=1):
 	uv_coord_list = []
 	new_index = 0
 	uvtex = mesh.uv_textures.active
+	
+	vgroups={}
+	bpy.ops.object.mode_set(mode='EDIT')
+	bpy.ops.mesh.select_all(action='DESELECT')
+	
+	selVerts = [v for v in verts]
+	
+	bpy.ops.mesh.select_all(action='SELECT')
+	
+	for vg in obj.vertex_groups:
+		vgroups[vg.name] = []
+	
+	for v in selVerts:
+		for n in v.groups:
+			vgrp = obj.vertex_groups[n.group]
+			vgroups[vgrp.name].append((n.group,v.index,n.weight))
+	
+	bpy.ops.object.mode_set(mode='OBJECT')
 	
 	uvlayers={}
 	uvprocess=True
@@ -676,10 +719,13 @@ def getCommonDataNoBmesh(Config,obj,flipUV=1):
 
 	#get bound box
 	bb = getBoundBox(obj)
-
 	trns = getObjTransform(obj)
+	
+	if Config.ReverseUVOrder != None:
+		if Config.ReverseUVOrder == 1:
+			uvlayers = reversed(uvlayers)
 
-	return vs,uvlayers,ins,nr,tan,bb,trns
+	return vs,uvlayers,ins,nr,tan,bb,trns,vgroups
 	
 def getObjTransform(obj):
 	trns = []
@@ -912,9 +958,9 @@ def WriteClass8270(file,obj,Config):
 	mati = setupMaterials(file,obj,Config)
 	
 	if checkBMesh() == True:
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonData(Config,obj)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonData(Config,obj)
 	else:
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonDataNoBmesh(Config,obj)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonDataNoBmesh(Config,obj)
 		
 	#if bytearray
 	if Config.ByClass == 1:
@@ -1179,11 +1225,11 @@ def WriteClass78(file,obj,Config):
 	
 	if checkBMesh() == True:
 		mefdata = mesh.polygons
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonData(Config,obj)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonData(Config,obj)
 		uvlayer = mesh.tessface_uv_textures.active
 	else:
 		mefdata = mesh.faces
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonDataNoBmesh(Config,obj)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonDataNoBmesh(Config,obj)
 		uvlayer = mesh.uv_textures.active
 		
 	cn=-1
@@ -1246,11 +1292,11 @@ def WriteClass75(file,obj,Config):
 	
 	if checkBMesh() == True:
 		mefdata = mesh.polygons
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonData(Config,obj)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonData(Config,obj)
 		uvlayer = mesh.tessface_uv_textures.active
 	else:
 		mefdata = mesh.faces
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonDataNoBmesh(Config,obj)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonDataNoBmesh(Config,obj)
 		uvlayer = mesh.uv_textures.active
 		
 	for face in mefdata:
@@ -1302,9 +1348,9 @@ def WriteClass5(file,obj,Config):
 	file.write("\t\tpublic function "+obj.data.name+"() {\n\n")
 
 	if checkBMesh() == True:
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonData(Config,obj,False)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonData(Config,obj,False)
 	else:
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonDataNoBmesh(Config,obj,False)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonDataNoBmesh(Config,obj,False)
 
 	if len(vs) > 0:
 		count = 0
@@ -1549,7 +1595,7 @@ def WriteDocuClass(ofile,objs,aobjs,Config,fp):
 #==================================
 
 class A3DExporterSettings:
-	def __init__(self,filePath="",A3DVersionSystem=4,ExportMode=1,ExportUVLayer=2,CompressData=1,ExportAnim=0,ExportUV=1,ExportNormals=1,ExportTangents=1,ExportParentObj=0,ExportBoundBoxes=1,ExportHiddenItems=1,CopyImgs=1,ExportHierarchy=1):
+	def __init__(self,filePath="",A3DVersionSystem=4,ExportMode=1,ExportUVLayer=2,CompressData=1,ExportAnim=0,ExportUV=1,ReverseUVOrder=0,ExportNormals=1,ExportTangents=1,ExportParentObj=0,ExportBoundBoxes=1,ExportHiddenItems=1,CopyImgs=1,ExportHierarchy=1):
 		self.filePath = filePath
 		self.A3DVersionSystem = int(A3DVersionSystem)
 		self.ExportMode = int(ExportMode)
@@ -1557,6 +1603,7 @@ class A3DExporterSettings:
 		self.CompressData = int(CompressData)
 		self.ExportAnim = int(ExportAnim)
 		self.ExportUV = int(ExportUV)
+		self.ReverseUVOrder = int(ReverseUVOrder)
 		self.ExportNormals = int(ExportNormals)
 		self.ExportTangents = int(ExportTangents)
 		self.ExportParentObj = int(ExportParentObj)
@@ -1592,6 +1639,7 @@ class A3DExporter(bpy.types.Operator):
 	
 	#ExportAnim = BoolProperty(name="Animation", description="Animation", default=False)
 	ExportUV = BoolProperty(name="Include UVs", description="UV", default=True)
+	ReverseUVOrder = BoolProperty(name="Reverse UV Layer Order", description="UV", default=False)
 	
 	ExportNormals = BoolProperty(name="Include Normals", description="Normals", default=True)
 	ExportTangents = BoolProperty(name="Include Tangents", description="Tangents", default=True)
@@ -1615,7 +1663,7 @@ class A3DExporter(bpy.types.Operator):
 			print('Output file : %s' %filePath)
 			file = open(filePath, 'wb')
 			file.close()
-			Config = A3DExporterSettings(fp,A3DVersionSystem=self.A3DVersionSystem,ExportMode=self.ExportMode,ExportUVLayer=self.ExportUVLayer,CompressData=self.CompressData,ExportAnim=False,ExportUV=self.ExportUV,ExportNormals=self.ExportNormals,ExportTangents=self.ExportTangents,ExportParentObj=self.ExportParentObj,ExportBoundBoxes=self.ExportBoundBoxes,ExportHiddenItems=self.ExportHiddenItems,CopyImgs=self.CopyImgs,ExportHierarchy=self.ExportHierarchy)
+			Config = A3DExporterSettings(fp,A3DVersionSystem=self.A3DVersionSystem,ExportMode=self.ExportMode,ExportUVLayer=self.ExportUVLayer,CompressData=self.CompressData,ExportAnim=False,ExportUV=self.ExportUV,ReverseUVOrder=self.ReverseUVOrder,ExportNormals=self.ExportNormals,ExportTangents=self.ExportTangents,ExportParentObj=self.ExportParentObj,ExportBoundBoxes=self.ExportBoundBoxes,ExportHiddenItems=self.ExportHiddenItems,CopyImgs=self.CopyImgs,ExportHierarchy=self.ExportHierarchy)
 			file = open(filePath, 'ab')
 			
 			if self.A3DVersionSystem == "5":
@@ -1663,9 +1711,9 @@ def A3DExport1(file,Config):
 			
 			#get raw geometry data
 			if checkBMesh() == True:
-				vs,uvlayers,ins,nr,tan,bb,trns = getCommonData(Config,obj)
+				vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonData(Config,obj)
 			else:
-				vs,uvlayers,ins,nr,tan,bb,trns = getCommonDataNoBmesh(Config,obj)
+				vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonDataNoBmesh(Config,obj)
 			#get surface data
 			start,end,mts,mats,uvimgs = collectSurfaces(mesh)
 					
@@ -1842,7 +1890,6 @@ def A3DExport2(file,Config):
 	spotLights = []
 	sprites = []
 	skins = []
-	tracks = []
 	vertexBuffers = []
 	layers = []
 	cameras = []
@@ -2187,7 +2234,6 @@ def A3DExport2(file,Config):
 			bonedict = {}
 			jntdict = {}
 			
-			#create all bones/joints
 			for bone in bones:
 				#bone name
 				a3dstr = A3DString()
@@ -2233,77 +2279,31 @@ def A3DExport2(file,Config):
 				if bone.parent != None:
 					jntdict[bone]._parentId = bonedict[bone.parent]
 
-			#Create anim track for each bone
+			#Create anim track for each bone - character has 22
 			for bone in bones:
 				a3dstr = A3DString()
 				a3dstr.name = bone.name
-				
+								
 				a3dtrack = A3D2Track(Config)
-				a3dtrack._id = len(tracks)
+				a3dtrack._id = len(animationTracks)
 				
 				keyfrms = []
 				for x in range(5):
+				
+					a3dtrans = A3DTransform(Config)
+					
 					a3dkeyframe = A3D2Keyframe(Config)
-					a3dkeyframe._time = 0
-					a3dkeyframe._transform = None
+					a3dkeyframe._time = x
+					a3dkeyframe._transform = a3dtrans
 					keyfrms.append(a3dkeyframe)
 				
 				a3dtrack._keyframes = keyfrms
-				a3dtrack._objectname = a3dstr
-				tracks.append(a3dtrack)
+				a3dtrack._objectName = a3dstr
+				animationTracks.append(a3dtrack)
 				
+			#create animclips - character has none
 			
-			
-			#bonedict = {}
-			
-			#taken from .x exporter
-			#ParentList = [Bone for Bone in arm.bones if Bone.parent is None]
-			#PoseBones = obj.pose.bones
-			
-			#for Bone in ParentList:
-			#
-			#	bonedict[Bone] = len(joints)
-			#
-			#	a3dstr = A3DString()
-			#	a3dstr.name = Bone.name
-			#	
-			#	a3djnt = A3D2Joint(Config)
-			#	a3djnt._id = len(joints)
-			#	a3djnt._name = a3dstr
-			#	a3djnt._visible = 1
-#
-#				PoseBone = PoseBones[Bone.name]
-#				if Bone.parent:
-#					jnt._parentId = bonedict[Bone.parent]
-#					BoneMatrix = PoseBone.parent.matrix.inverted()
-#				else:
-#					BoneMatrix = Matrix()
-#				BoneMatrix *= PoseBone.matrix
-				
-				#a3djnt._transform = [BoneMatrix[0][0],BoneMatrix[0][1],BoneMatrix[0][2],BoneMatrix[1][0],BoneMatrix[1][1],BoneMatrix[1][2],BoneMatrix[2][0],BoneMatrix[2][1],BoneMatrix[2][2],BoneMatrix[3][0],BoneMatrix[3][1],BoneMatrix[3][2]]
-#				joints.append(a3djnt)
-				
-				#now do same as above for bone children
-				#Bone.children
-			
-			#print(arm.name)
-			#for b in bones:
-				
-			#	a3dstr = A3DString()
-			#	a3dstr.name = b.name
-			
-			#	jnt = A3D2Joint(Config)
-				#jnt._boundBoxId = a3dbox
-			#	jnt._id = len(joints)
-			#	jnt._name = a3dstr
-				#jnt._parentId = None
-				#jnt._transform = getObjTransform(b)
-			#	jnt._visible = 1
-			#	joints.append(jnt)
-				#print(b.name) #name bone
-				#print(b.head_local) #vector xyz - head_radius
-				#print(b.tail_local) #vector xyz - tail_radius
-				#print(b.matrix_local) #matrix
+			#export as skin - character has one
 
 	if len(objs_mesh) > 0:
 		print("Exporting meshes...\n")
@@ -2315,7 +2315,9 @@ def A3DExport2(file,Config):
 			
 			#create the mesh if parent isn't lod
 			hasparentlod = False
+			parenttype = None
 			if obj.parent != None:
+				parenttype = obj.parent.type
 				parentobj = obj.parent
 				if "a3dtype" in parentobj:
 					if parentobj["a3dtype"] == 'A3DLOD':
@@ -2326,8 +2328,12 @@ def A3DExport2(file,Config):
 				if Config.CopyImgs:
 					print("copy images...\n")
 					copyImages(obj,Config.filePath)
-					
-				a3dmesh = createMesh(Config,obj,linkedimgdata,linkedimg,linkeddata,linkedmesh,decals,meshes,objects,mesh_objects,boxes,indexBuffers,images,maps,materials,vertexBuffers)
+				
+				#create skin if mesh is linked with armature
+				if parenttype == 'ARMATURE':
+					a3dskin = createSkin(Config,obj,linkedimgdata,linkedimg,linkeddata,linkedmesh,decals,meshes,objects,mesh_objects,boxes,indexBuffers,images,maps,materials,vertexBuffers, joints)
+				else:
+					a3dmesh = createMesh(Config,obj,linkedimgdata,linkedimg,linkeddata,linkedmesh,decals,meshes,objects,mesh_objects,boxes,indexBuffers,images,maps,materials,vertexBuffers)
 			else:
 				print("didn't write mesh as parent is lod")
 		
@@ -2409,20 +2415,36 @@ def createObject(Config,obj,objects,mesh_objects):
 	a3dstr2.name = "obj_"+cleanupString(obj.data.name)
 	
 	#create transform/matrix
-	wtrns = getObjWorldTransform(obj)
+	#wtrns = getObjWorldTransform(obj)
+	#a3dtrans = A3DTransform(Config)
+	#a3dtrans._matrix.a = wtrns[0]
+	#a3dtrans._matrix.b = wtrns[1]
+	#a3dtrans._matrix.c = wtrns[2]
+	#a3dtrans._matrix.d = wtrns[3]
+	#a3dtrans._matrix.e = wtrns[4]
+	#a3dtrans._matrix.f = wtrns[5]
+	#a3dtrans._matrix.g = wtrns[6]
+	#a3dtrans._matrix.h = wtrns[7]
+	#a3dtrans._matrix.i = wtrns[8]
+	#a3dtrans._matrix.j = wtrns[9]
+	#a3dtrans._matrix.k = wtrns[10]
+	#a3dtrans._matrix.l = wtrns[11]
+	
+	#test
+	#try identity matrix
 	a3dtrans = A3DTransform(Config)
-	a3dtrans._matrix.a = wtrns[0]
-	a3dtrans._matrix.b = wtrns[1]
-	a3dtrans._matrix.c = wtrns[2]
-	a3dtrans._matrix.d = wtrns[3]
-	a3dtrans._matrix.e = wtrns[4]
-	a3dtrans._matrix.f = wtrns[5]
-	a3dtrans._matrix.g = wtrns[6]
-	a3dtrans._matrix.h = wtrns[7]
-	a3dtrans._matrix.i = wtrns[8]
-	a3dtrans._matrix.j = wtrns[9]
-	a3dtrans._matrix.k = wtrns[10]
-	a3dtrans._matrix.l = wtrns[11]
+	a3dtrans._matrix.a = 1
+	a3dtrans._matrix.b = 0
+	a3dtrans._matrix.c = 0
+	a3dtrans._matrix.d = 0
+	a3dtrans._matrix.e = 0
+	a3dtrans._matrix.f = 1
+	a3dtrans._matrix.g = 0
+	a3dtrans._matrix.h = 0
+	a3dtrans._matrix.i = 0
+	a3dtrans._matrix.j = 0
+	a3dtrans._matrix.k = 1
+	a3dtrans._matrix.l = 0
 
 	a3dobj = A3D2Object(Config)
 	#a3dobj._boundBoxId = 0
@@ -2438,7 +2460,7 @@ def createObject(Config,obj,objects,mesh_objects):
 def createMesh(Config,obj,linkedimgdata,linkedimg,linkeddata,linkedmesh,decals,meshes,objects,mesh_objects,boxes,indexBuffers,images,maps,materials,vertexBuffers,isdecal=False):
 	mesh = obj.data
 	if mesh.users > 1:
-		print('this has is used for other objs aka linked copy')
+		print('Mesh data is a linked copy')
 		#linked mesh uses same name e.g "Cube"
 		if mesh.name in linkeddata:
 			#user already exists, retrieve ids
@@ -2461,9 +2483,9 @@ def createMesh(Config,obj,linkedimgdata,linkedimg,linkeddata,linkedmesh,decals,m
 	
 	#get raw geometry data
 	if checkBMesh() == True:
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonData(Config,obj)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonData(Config,obj)
 	else:
-		vs,uvlayers,ins,nr,tan,bb,trns = getCommonDataNoBmesh(Config,obj)
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonDataNoBmesh(Config,obj)
 	#get surface data
 	start,end,mts,mats,uvimgs = collectSurfaces(mesh)
 	
@@ -2782,13 +2804,13 @@ def createMesh(Config,obj,linkedimgdata,linkedimg,linkeddata,linkedmesh,decals,m
 			mesh_objects.append(a3ddecal)
 
 	#reverse uvlayers, because a3d player loads latest uvlayer as default
-	revkeys = sorted(uvlayers.keys(), reverse=True)
-	uvlayersr = {}
-	i=0
-	for k in revkeys:
-		uvlayersr[i] = uvlayers[k]
-		i = i +1
-	uvlayers = uvlayersr
+	#revkeys = sorted(uvlayers.keys(), reverse=True)
+	#uvlayersr = {}
+	#i=0
+	#for k in revkeys:
+	#	uvlayersr[i] = uvlayers[k]
+	#	i = i +1
+	#uvlayers = uvlayersr
 	
 	if linkedmesh == False:
 		#create vertexbuffer
@@ -2841,6 +2863,380 @@ def createMesh(Config,obj,linkedimgdata,linkedimg,linkeddata,linkedmesh,decals,m
 		return a3dmesh
 	else:
 		return a3ddecal
+
+def createSkin(Config,obj,linkedimgdata,linkedimg,linkeddata,linkedmesh,decals,meshes,objects,mesh_objects,boxes,indexBuffers,images,maps,materials,vertexBuffers):
+	print("creating skin..")
+	mesh = obj.data
+	if mesh.users > 1:
+		print('this has is used for other objs aka linked copy')
+		#linked mesh uses same name e.g "Cube"
+		if mesh.name in linkeddata:
+			#user already exists, retrieve ids
+			ibufid = linkeddata[mesh.name][0]
+			vbufids = linkeddata[mesh.name][1]
+			#set to true so we don't add buffers with data we don't need
+			linkedmesh=True
+		else:
+			#user doesn't exist yet
+			ibufid = len(indexBuffers)
+			vbufids = [len(vertexBuffers)]
+			#assign for other users
+			linkeddata[mesh.name] = [ibufid,vbufids]
+			linkedmesh=False
+	else:
+		#print("single user mesh")
+		linkedmesh=False
+		ibufid = len(indexBuffers)
+		vbufids = [len(vertexBuffers)]
+	
+	#get raw geometry data
+	if checkBMesh() == True:
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonData(Config,obj)
+	else:
+		vs,uvlayers,ins,nr,tan,bb,trns,vgroups = getCommonDataNoBmesh(Config,obj)
+	#get surface data
+	start,end,mts,mats,uvimgs = collectSurfaces(mesh)
+	
+	a3dobj = None
+	#create parent object if hierarchy and no parent
+	if Config.ExportHierarchy == 1:
+		if obj.parent == None:
+			a3dobj = createObject(Config,obj,objects,mesh_objects)
+			
+	#create parent object if no hierarchy
+	if Config.ExportParentObj == 1 and Config.ExportHierarchy == 0:
+		a3dobj = createObject(Config,obj,objects,mesh_objects)
+	
+	if Config.ExportBoundBoxes == 1:
+		#create mesh boundbox
+		a3dbox = A3D2Box(Config)
+		a3dbox._box = bb
+		a3dbox._id = len(boxes)
+		boxes.append(a3dbox)
+	
+	#create indexbuffer
+	if linkedmesh == False:
+		a3dibuf = A3D2IndexBuffer(Config)
+		for x in range(len(ins)):
+			a3dibuf._byteBuffer.append(ins[x])
+		#a3dibuf._id = len(indexBuffers)
+		a3dibuf._id = ibufid
+		a3dibuf._indexCount = len(a3dibuf._byteBuffer)
+		indexBuffers.append(a3dibuf)
+		
+	mesh_surfaces = []
+		
+	#set surfaces
+	if len(mts) > 0:
+		for x in range(len(mts)):
+			print("mts[x]="+str(mts[x]))
+			print("mat="+str(GetMaterialTexture(mats[x])))
+			
+			difmap = int("ffffffff",16)
+			glossmap = int("ffffffff",16)
+			lighmap = int("ffffffff",16)
+			normmap = int("ffffffff",16)
+			opacmap = int("ffffffff",16)
+			specmap = int("ffffffff",16)
+			reflmap = int("ffffffff",16)
+			
+			for tex in mats[x].texture_slots:
+				if (tex is not None) and (tex.texture.type == "IMAGE"):
+					name=tex.name.lower()
+					
+					if tex.texture.image.filepath in linkedimgdata:
+						#user already exists, retrieve ids
+						imgid = linkedimgdata[tex.texture.image.filepath][0]
+						#set to true so we don't add buffers with data we don't need
+						linkedimg=True
+					else:
+						#user doesn't exist yet
+						imgid = len(images)
+						#assign for other users
+						linkedimgdata[tex.texture.image.filepath] = [imgid]
+						linkedimg = False
+
+					#create image
+					if linkedimg == False:
+						a3dstr = A3DString()
+						#a3dstr.name = os.path.basename(tex.texture.image.filepath)
+						a3dstr.name = os.path.basename(bpy.path.abspath(tex.texture.image.filepath))
+						
+						a3dimg = A3D2Image(Config)
+						a3dimg._id = imgid
+						a3dimg._url = a3dstr
+						images.append(a3dimg)
+					
+					a3dmap = A3D2Map(Config)
+					a3dmap._channel = 0
+					a3dmap._id = len(maps)
+					a3dmap._imageId = imgid
+					maps.append(a3dmap)
+					
+					if name.startswith('diffuse'):
+						difmap = a3dmap._id
+					elif name.startswith('normal'):
+						normmap = a3dmap._id
+					elif name.startswith('specular'):
+						specmap = a3dmap._id
+					elif name.startswith('opacity'):
+						opacmap = a3dmap._id
+					elif name.startswith('glossiness'):
+						glossmap = a3dmap._id
+					elif name.startswith('light'):
+						lighmap = a3dmap._id
+					elif name.startswith('reflection'):
+						reflmap = a3dmap._id
+					else:
+						#just write as diffuse if no matches
+						difmap = a3dmap._id
+			
+			#create material
+			a3dmat = A3D2Material(Config)
+			a3dmat._diffuseMapId = difmap
+			a3dmat._glossinessMapId = glossmap
+			a3dmat._id = len(materials)
+			a3dmat._lightMapId = lighmap
+			a3dmat._normalMapId = normmap
+			a3dmat._opacityMapId = opacmap
+			a3dmat._reflectionCubeMapId = reflmap
+			a3dmat._specularMapId = specmap
+			materials.append(a3dmat)
+			
+			#create surface
+			a3dsurf = A3D2Surface(Config)
+			a3dsurf._indexBegin = int(start[x])
+			a3dsurf._materialId = a3dmat._id
+			a3dsurf._numTriangles = int(end[x])
+			mesh_surfaces.append(a3dsurf)
+	elif len(uvimgs) > 0:
+		#no materials, try image per face surfaces
+		
+		for x in range(len(uvimgs)):
+			difmap = int("ffffffff",16)
+			glossmap = int("ffffffff",16)
+			lighmap = int("ffffffff",16)
+			normmap = int("ffffffff",16)
+			opacmap = int("ffffffff",16)
+			specmap = int("ffffffff",16)
+			reflmap = int("ffffffff",16)
+			
+			if uvimgs[x] != None:
+				if uvimgs[x].filepath in linkedimgdata:
+					#user already exists, retrieve ids
+					imgid = linkedimgdata[uvimgs[x].filepath][0]
+					#set to true so we don't add buffers with data we don't need
+					linkedimg=True
+				else:
+					#user doesn't exist yet
+					imgid = len(images)
+					#assign for other users
+					linkedimgdata[uvimgs[x].filepath] = [imgid]
+					linkedimg = False
+				
+			#create image
+			if (linkedimg == False) and (uvimgs[x] != None):
+				a3dstr = A3DString()
+				a3dstr.name = os.path.basename(bpy.path.abspath(uvimgs[x].filepath))
+				
+				a3dimg = A3D2Image(Config)
+				a3dimg._id = imgid
+				a3dimg._url = a3dstr
+				images.append(a3dimg)
+			
+			if uvimgs[x] != None:
+				a3dmap = A3D2Map(Config)
+				a3dmap._channel = 0
+				a3dmap._id = len(maps)
+				a3dmap._imageId = imgid
+				maps.append(a3dmap)	
+				
+				#just set to diffuse
+				difmap = a3dmap._id
+			
+			a3dmat = A3D2Material(Config)
+			a3dmat._diffuseMapId = difmap
+			a3dmat._glossinessMapId = glossmap
+			a3dmat._id = len(materials)
+			a3dmat._lightMapId = lighmap
+			a3dmat._normalMapId = normmap
+			a3dmat._opacityMapId = opacmap
+			a3dmat._reflectionCubeMapId = reflmap
+			a3dmat._specularMapId = specmap
+			materials.append(a3dmat)
+			
+			#create surface
+			a3dsurf = A3D2Surface(Config)
+			a3dsurf._indexBegin = int(start[x])
+			a3dsurf._materialId = a3dmat._id
+			a3dsurf._numTriangles = int(end[x])
+			mesh_surfaces.append(a3dsurf)
+	else:
+		#surface for all faces
+		a3dsurf = A3D2Surface(Config)
+		a3dsurf._indexBegin = 0
+		#a3dsurf._materialId = int("ffffffff",16)
+		#a3dsurf._materialId = 0
+		a3dsurf._numTriangles = int(len(ins)/3)
+		mesh_surfaces.append(a3dsurf)
+	
+	#create transform/matrix
+	a3dtrans = A3DTransform(Config)
+	a3dtrans._matrix.a = trns[0]
+	a3dtrans._matrix.b = trns[1]
+	a3dtrans._matrix.c = trns[2]
+	a3dtrans._matrix.d = trns[3]
+	a3dtrans._matrix.e = trns[4]
+	a3dtrans._matrix.f = trns[5]
+	a3dtrans._matrix.g = trns[6]
+	a3dtrans._matrix.h = trns[7]
+	a3dtrans._matrix.i = trns[8]
+	a3dtrans._matrix.j = trns[9]
+	a3dtrans._matrix.k = trns[10]
+	a3dtrans._matrix.l = trns[11]
+	
+	#name
+	a3dstr = A3DString()
+	a3dstr.name = cleanupString(obj.data.name)
+	
+	#create mesh
+	a3dskin = A3D2Skin(Config)
+	
+	if Config.ExportBoundBoxes == 1:
+		a3dskin._boundBoxId = a3dbox._id
+		
+	a3dskin._id = len(mesh_objects)
+	#a3dskin._indexBufferId = a3dibuf._id
+	a3dskin._indexBufferId = ibufid
+	
+	# NOTE
+	# Each element of array numJoints is the number of bones on a surface. Bones indexes are stored in an array of joints.
+	# For example if there are 2 surfaces in skin the first has 4 bones with ids 0,2,3,4 and second has 3 bones with ids 1,2,5. 
+	# Respectively, in the vector are the following joints: [0,2,3,4,1,2,5], and in the vector numJoints are the following [4,3]
+	
+	# so i need to get each bone per surface (vertexgroup) set the number of bones in numjoints and then set joints to have the bone index
+	# i also need to populate jointbindtransforms, which presumably is each bone to surfaces transform or something??
+	
+	# http://blenderartists.org/forum/showthread.php?202503-Vertex-group-data-(assigned-vertices-and-weight)
+	
+	#armature
+	armob = obj.parent
+	armob_data = armob.data
+	
+	#bone name matches vertex group
+	#loop over vertexgroups get bone name
+	#  then get bone that matches name from armature
+	#     position in hierachy determines index?
+	#     get weight from vertexgroup info
+	#	  get vertex from vertexgroup info
+	#vertex = [index,weight,index,weight]
+
+	#bpy.ops.object.mode_set(mode='EDIT')
+	
+	#for bname, listdata in vgroups.iteritems():
+	#	vertex,weight = listdata[1],listdata[2]
+	#	for bone in armob_data.edit_bones:
+	#		if bone.name == bname:
+	#			jnts.append(weight,
+				
+	#bpy.ops.object.mode_set(mode='OBJECT')
+	
+	#array of A3D2JointBindTransform
+	a3dskin._jointBindTransforms = []
+	#array of int64
+	js = []
+	for jn in joints:
+		js.append(jn._id)
+		
+	a3dskin._joints = js
+	a3dskin._name = a3dstr
+	
+	#array of ushort
+	a3dskin._numJoints = [len(js)]
+	
+	#if Config.ExportParentObj == 1 or Config.ExportHierarchy == 1:
+	if a3dobj != None:
+		a3dskin._parentId = a3dobj._id
+	a3dskin._surfaces = mesh_surfaces
+	a3dskin._transform = a3dtrans
+	#a3dskin._vertexBuffers = [len(vertexBuffers)] #vertex buffer ids
+	a3dskin._vertexBuffers = vbufids #vertex buffer ids
+	a3dskin._visible = 1
+	if obj.hide == True:
+		a3dskin._visible = 0
+	else:
+		a3dskin._visible = 1
+		
+	if obj.hide == 1:
+		if Config.ExportHiddenItems == 1:
+			meshes.append(a3dskin)
+			mesh_objects.append(a3dskin)
+	else:
+		meshes.append(a3dskin)
+		mesh_objects.append(a3dskin)
+
+	#reverse uvlayers, because a3d player loads latest uvlayer as default
+	#revkeys = sorted(uvlayers.keys(), reverse=True)
+	#uvlayersr = {}
+	#i=0
+	#for k in revkeys:
+	#	uvlayersr[i] = uvlayers[k]
+	#	i = i +1
+	#uvlayers = uvlayersr
+	
+	if linkedmesh == False:
+		#create vertexbuffer
+		a3dvbuf = A3D2VertexBuffer(Config)
+		#POSITION = 0, NORMAL = 1, TANGENT4 = 2, JOINT = 3,TEXCOORD = 4
+		attar = []
+		if len(vs) > 0:
+			attar.append(0)
+		if (len(uvlayers) > 0) and (Config.ExportUV == 1):
+			for uvname, uvdata in uvlayers.items():
+				attar.append(4)
+		if (len(nr) > 0) and (Config.ExportNormals == 1):
+			attar.append(1)
+		if (len(tan) > 0) and (Config.ExportTangents == 1):
+			attar.append(2)
+		if len(jnt) > 0:
+			attar.append(3)
+		
+		a3dvbuf._attributes = attar
+		j=0
+		for v in vs:
+			if 0 in attar:
+				a3dvbuf._byteBuffer.append(v[0]) #vert1
+				a3dvbuf._byteBuffer.append(v[1]) #vert2
+				a3dvbuf._byteBuffer.append(v[2]) #vert3
+			if 4 in attar and (Config.ExportUV == 1):			
+				for uvname, uvdata in uvlayers.items():
+					uvt = uvdata[0]
+					a3dvbuf._byteBuffer.append(uvt[j][0]) #uv
+					a3dvbuf._byteBuffer.append(uvt[j][1]) #uv
+			if 1 in attar and (Config.ExportNormals == 1):
+				a3dvbuf._byteBuffer.append(nr[j][0]) #normal1
+				a3dvbuf._byteBuffer.append(nr[j][1]) #normal2
+				a3dvbuf._byteBuffer.append(nr[j][2]) #normal3
+			if 2 in attar and (Config.ExportTangents == 1):
+				a3dvbuf._byteBuffer.append(tan[j][0]) #tan1
+				a3dvbuf._byteBuffer.append(tan[j][1]) #tan2
+				a3dvbuf._byteBuffer.append(tan[j][2]) #tan3
+				a3dvbuf._byteBuffer.append(-1) #tan4 - static input handedness
+			if 3 in attar:
+				a3dvbuf._byteBuffer.append(jnt[j][0]) #jointA.index
+				a3dvbuf._byteBuffer.append(jnt[j][1]) #jointA.weight
+				a3dvbuf._byteBuffer.append(jnt[j][2]) #jointB.index
+				a3dvbuf._byteBuffer.append(jnt[j][3]) #jointB.weight
+			j = j +1
+		a3dvbuf._id = len(vertexBuffers)
+		#a3dvbuf._vertexCount = int(len(ins))
+		#a3dvbuf._vertexCount = int(len(vs) * 3) 
+		a3dvbuf._vertexCount = int(len(vs)) #this works for cube
+		#a3dvbuf._vertexCount = int(len(ins)) 
+		#a3dvbuf._vertexCount = 24
+		vertexBuffers.append(a3dvbuf)
+		#print("vs="+str(len(vs)))	
+	return a3dskin
 	
 #==================================
 # A3D IMPORTER
@@ -3062,6 +3458,8 @@ class A3DString:
 		self.name = name
 	
 	def write(self,file):
+		if self.name == None:
+			self.name = ""
 		bylen = len(self.name)
 		ar = A3DArray()
 		ar.write(file,bylen)
@@ -3122,6 +3520,45 @@ class A3DTransform:
 		matrx[2] = Vector((self._matrix.i, self._matrix.j, self._matrix.k, self._matrix.l))
 		return matrx
 		
+	def invert(self):
+		ta,tb,tc,td,te,tf,tg,th,ti,tj,tk,tl = self._matrix.a,self._matrix.b,self._matrix.c,self._matrix.d,self._matrix.e,self._matrix.f,self._matrix.g,self._matrix.h,self._matrix.i,self._matrix.j,self._matrix.k,self._matrix.l
+		det = 1/(-tc*tf*ti + tb*tg*ti + tc*te*tj - ta*tg*tj - tb*te*tk + ta*tf*tk)
+		self._matrix.a = (-tg*tj + tf*tk)*det;
+		self._matrix.b = (tc*tj - tb*tk)*det;
+		self._matrix.c = (-tc*tf + tb*tg)*det;
+		self._matrix.d = (td*tg*tj - tc*th*tj - td*tf*tk + tb*th*tk + tc*tf*tl - tb*tg*tl)*det;
+		self._matrix.e = (tg*ti - te*tk)*det;
+		self._matrix.f = (-tc*ti + ta*tk)*det;
+		self._matrix.g = (tc*te - ta*tg)*det;
+		self._matrix.h = (tc*th*ti - td*tg*ti + td*te*tk - ta*th*tk - tc*te*tl + ta*tg*tl)*det;
+		self._matrix.i = (-tf*ti + te*tj)*det;
+		self._matrix.j = (tb*ti - ta*tj)*det;
+		self._matrix.k = (-tb*te + ta*tf)*det;
+		self._matrix.l = (td*tf*ti - tb*th*ti - td*te*tj + ta*th*tj + tb*te*tl - ta*tf*tl)*det;
+		return self.getMatrix()
+		
+	def inverted(self):
+		ta,tb,tc,td,te,tf,tg,th,ti,tj,tk,tl = self._matrix.a,self._matrix.b,self._matrix.c,self._matrix.d,self._matrix.e,self._matrix.f,self._matrix.g,self._matrix.h,self._matrix.i,self._matrix.j,self._matrix.k,self._matrix.l
+		det = 1/(-tc*tf*ti + tb*tg*ti + tc*te*tj - ta*tg*tj - tb*te*tk + ta*tf*tk)
+		a = (-tg*tj + tf*tk)*det;
+		b = (tc*tj - tb*tk)*det;
+		c = (-tc*tf + tb*tg)*det;
+		d = (td*tg*tj - tc*th*tj - td*tf*tk + tb*th*tk + tc*tf*tl - tb*tg*tl)*det;
+		e = (tg*ti - te*tk)*det;
+		f = (-tc*ti + ta*tk)*det;
+		g = (tc*te - ta*tg)*det;
+		h = (tc*th*ti - td*tg*ti + td*te*tk - ta*th*tk - tc*te*tl + ta*tg*tl)*det;
+		i = (-tf*ti + te*tj)*det;
+		j = (tb*ti - ta*tj)*det;
+		k = (-tb*te + ta*tf)*det;
+		l = (td*tf*ti - tb*th*ti - td*te*tj + ta*th*tj + tb*te*tl - ta*tf*tl)*det;	
+		matrx = Matrix()
+		matrx[0][0], matrx[0][1], matrx[0][2], matrx[0][3] = a, b, c, d
+		matrx[1][0], matrx[1][1], matrx[1][2], matrx[1][3] = e, f, g, h
+		matrx[2][0], matrx[2][1], matrx[2][2], matrx[2][3] = i, j, k, l
+		matrx[3][0], matrx[3][1], matrx[3][2], matrx[3][3] = 0, 0, 0, 1
+		return matrx
+		
 	def read(self,file):
 		self._matrix.read(file)
 		
@@ -3130,32 +3567,36 @@ class A3DTransform:
 		
 class A3DMatrix:
 	def __init__(self):
-		self.a = 0
+		self.a = 1
 		self.b = 0
 		self.c = 0
 		self.d = 0
+		
 		self.e = 0
-		self.f = 0
+		self.f = 1
 		self.g = 0
 		self.h = 0
+		
 		self.i = 0
 		self.j = 0
-		self.k = 0
+		self.k = 1
 		self.l = 0
 		self._mskindex = 0
 	
 	def reset(self):
-		self.a = 0
+		self.a = 1
 		self.b = 0
 		self.c = 0
 		self.d = 0
+		
 		self.e = 0
-		self.f = 0
+		self.f = 1
 		self.g = 0
 		self.h = 0
+		
 		self.i = 0
 		self.j = 0
-		self.k = 0
+		self.k = 1
 		self.l = 0
 		self._mskindex = 0
 		
@@ -5042,7 +5483,6 @@ class A3D2DirectionalLight:
 		if self._parentId is not None:
 			obj = objects[self._parentId]
 			if obj._transform != None:
-				print("direct yes")
 				ob.matrix_world = obj._transform.getMatrix()
 
 		if (self._transform is not None) and (self.Config.ApplyTransforms == True):
@@ -5885,7 +6325,65 @@ class A3D2Skin:
 		self._visible = unpack("B", file.read(calcsize("B")))[0]
 		
 	def write(self,file):
-		print("write")
+		if self._boundBoxId is not None:
+			self._optmask = self._optmask + str(0)
+			file.write(pack(">L",self._boundBoxId))
+		else:
+			self._optmask = self._optmask + str(1)
+			
+		file.write(pack(">Q",self._id))
+		file.write(pack(">L",self._indexBufferId))
+		
+		#_jointBindTransforms
+		arr = A3DArray()
+		arr.write(file,len(self._jointBindTransforms))
+		for jointbnd in self._jointBindTransforms:
+			jointbnd.write(file)
+		
+		#_joints
+		arr = A3DArray()
+		arr.write(file,len(self._joints))
+		for jnt in self._joints:
+			jnt.write(file)
+		
+		#string
+		if self._name is not None:
+			self._optmask = self._optmask + str(0)
+			self._name.write(file)
+		else:
+			self._optmask = self._optmask + str(1)
+			
+		#numjoints
+		arr = A3DArray()
+		arr.write(file,len(self._numJoints))
+		for numjnt in self._numJoints:
+			file.write(pack(">H",numjnt))
+			
+		#parentid
+		if self._parentId is not None:
+			self._optmask = self._optmask + str(0)
+			file.write(pack(">Q",self._parentId))
+		else:
+			self._optmask = self._optmask + str(1)
+		#surfaces
+		arr = A3DArray()
+		arr.write(file,len(self._surfaces))
+		for surf in self._surfaces:
+			surf.write(file)
+			self._optmask = self._optmask + surf._optmask
+		#transform
+		if self._transform is not None:
+			self._optmask = self._optmask + str(0)
+			self._transform.write(file)
+		else:
+			self._optmask = self._optmask + str(1)
+		#vbuffers
+		arr = A3DArray()
+		arr.write(file,len(self._vertexBuffers))
+		for x in range(len(self._vertexBuffers)):
+			file.write(pack(">L",self._vertexBuffers[x]))
+		#visible
+		file.write(pack("B",self._visible))
 	
 	def render(self,ibuffers,vbuffers,materials,maps,images,indexedJoints,joints,animationClips,animationTracks):
 		verts = []
@@ -5894,6 +6392,12 @@ class A3D2Skin:
 		norms = []
 		tans = []
 		jnts = []
+		jnts2 = []
+
+		#create joint bind index from bone id
+		jointbindtrnsindex = {}
+		for jbt in self._jointBindTransforms:
+			jointbindtrnsindex[jbt._id] = jbt
 	
 		#index buff
 		ibuf = ibuffers[self._indexBufferId]
@@ -5902,6 +6406,9 @@ class A3D2Skin:
 			temp = (ibuf._byteBuffer[i],ibuf._byteBuffer[i+1],ibuf._byteBuffer[i+2])
 			faces.append(temp)
 			i=i+3
+
+		joints2vertex = []
+		vertex = 0
 		
 		#vert buff
 		for v in self._vertexBuffers:
@@ -5966,6 +6473,10 @@ class A3D2Skin:
 						i = i + 1
 						#jointA.index, jointA.weight, jointB.index, jointB.weight
 						jnts.append((ai, aw, bi, bw))
+						jnts2.append((ai, aw))
+						jnts2.append((bi, bw))
+						tmp = [vertex,ai,aw,bi,bw]
+						joints2vertex.append(tmp)
 					if att == 4:
 						uv1 = vbuf._byteBuffer[i]
 						i = i + 1
@@ -5973,6 +6484,7 @@ class A3D2Skin:
 						uv2 = 1.0 - uv2
 						i = i + 1
 						uvs.append([uv1,uv2])
+				vertex = vertex + 1
 					
 		#print(verts)
 		#print(faces)
@@ -6259,14 +6771,19 @@ class A3D2Skin:
 		
 		#create bonetable
 		boneTable1 = []
+		poseTable = []
 		
+		concatmat = Matrix()
 		for j in joints:
 			if j._parentId in indexedJoints:
+				parenttrns = indexedJoints[j._parentId]._transform
 				nameparent = indexedJoints[j._parentId]._name
 			else:
+				parenttrns=None
 				nameparent=None			
-			mat = j._transform.getMatrix()
-			tmp = (j._name,nameparent,j._transform)
+			mat = j._transform.getMatrix()			
+			concatmat = concatmat * mat
+			tmp = (j._name,nameparent,j._transform,parenttrns,concatmat,j._id,j._parentId,jointbindtrnsindex)
 			boneTable1.append(tmp)
 			#print(j._name)
 			#print(mat)
@@ -6275,9 +6792,17 @@ class A3D2Skin:
 			#print(r1)
 			#print(r1.to_euler())
 			#print("---")
-		rig = self.createRig('Rig', (0,0,0), boneTable1)	
+			ptmp = (j._name,j._transform,j._id,jointbindtrnsindex)
+			poseTable.append(ptmp)
+			
+		#rig = self.createRig('Rig', (0,0,0), boneTable1)	
+		rig = self.createRig2('Rig', (0,0,0), joints, indexedJoints, jointbindtrnsindex)	
 		
-		self.createAnimation(rig,animationClips,animationTracks)
+		#self.createAnimation(rig,animationClips,animationTracks)
+		
+		self.skinMesh(ob, rig, joints2vertex, joints, indexedJoints)
+		
+		self.poseRig(rig, poseTable)
 				
 		# New Armatures include a default bone, remove it.
 		#bones.remove(bones[0])
@@ -6534,16 +7059,103 @@ class A3D2Skin:
 			roll = 2*atan(quat.y/quat.w)
 		return roll
 			
-	def skinMesh(ob, rig):
-		# List of vertex groups, in the form (vertex, weight)
+	def skinMesh(self, ob, rig, joints2vertex, joints, indexedJoints):
+	
 		vgroups = {}
-		vgroups['Base'] = [
-			(0, 1.0), (1, 1.0), (2, 1.0), (3, 1.0),
-			(4, 0.5), (5, 0.5), (6, 0.5), (7, 0.5)]
-		vgroups['Mid'] = [
-			(4, 0.5), (5, 0.5), (6, 0.5), (7, 0.5),
-			(8, 1.0), (9, 1.0), (10, 1.0), (11, 1.0)]
-		vgroups['Tip'] = [(12, 1.0), (13, 1.0), (14, 1.0), (15, 1.0)]
+		
+		#Each element of array numJoints is the number of bones on a surface. Bones indexes are stored in an array of joints.
+		#For example, if there are 2 surfaces in skin: the first has 4 bones with ids 0,2,3,4, and second has 3 bones with ids 1,2,5. 
+		#Respectively, in the vector are the following joints: [0,2,3,4,1,2,5], and in the vector numJoints are the following: [4,3]
+		#self._numJoints
+		
+		#Link of a vertex and a bone stores in vertex data of <code>VertexAttributes.JOINTS</code> type. 
+		#Vertex buffer point to a joint with following form: index of the joint within <code>renderedJoints</code> multiplied with 3. 
+		#It is done so in order to avoid this multiplication within vertex shader for each frame.
+		
+		#print(joints2vertex)
+		#for jn in joints2vertex:
+		#		vert, jntAindex, jntAweight, jntBindex, jntBweight = jn[0], jn[1], jn[2], jn[3], jn[4]
+				
+		data = {}
+		i = 0
+		for j in self._numJoints:
+			for x in range(j):
+				jointnum = self._joints[x]
+				joint = indexedJoints[jointnum]
+				
+				vgroupdata = []
+				
+				for jn in joints2vertex:
+					vert, jntAindex, jntAweight, jntBindex, jntBweight = jn[0], jn[1], jn[2], jn[3], jn[4]
+					#print(jn)
+					if int(i * 3) == int(jntAindex):
+						vgroupdata.append((vert,jntAweight))
+					if int(jntBindex) > 0 and float(jntBweight) > 0:
+						if int(i * 3) == int(jntBindex):
+							vgroupdata.append((vert,jntBweight))
+				
+				vgroups[joint._name] = vgroupdata
+				i = i + 1
+			
+		#print(joints2vertex)	
+		
+		#vertexnum = 0
+		#data = {}
+		#for jn in jnts:
+		#	if int(jn[0]) not in data:
+		#		data[int(jn[0])] = []
+		#	data[int(jn[0])].append((vertexnum,jn[1]))
+		#	if int(jn[2]) not in data:
+		#		data[int(jn[2])] = []
+		#	data[int(jn[2])].append((vertexnum,jn[3]))
+		#	vertexnum = vertexnum + 1
+			
+		#print(data.keys())
+		
+		#loop over the number of joints per surface, put joints in vertex group
+		#for j in self._numJoints:
+			#print("numJoints="+str(j))
+			#print(self._joints)
+		#	for x in range(j):
+		#		print(x)
+				#vgroups[indexedJoints[self._joints[x]]._name] = []
+		#		tmp = []
+				#for k in data[ int(indexedJoints[self._joints[x]]._id) ]:
+		#		print(x * 3)
+				
+		#		if int(x*3) in data.keys():
+		#			for k in data[ x * 3 ]:
+		#				tmp.append((k[0],k[1]))
+				
+		#		vgroups[indexedJoints[self._joints[x]]._name] = tmp
+				
+				#for k in data[ x * 3 ]:
+				#	tmp.append((k[0],k[1]))
+				#vgroups[indexedJoints[self._joints[x]]._name] = tmp
+				#vgroups['temp'+str(x)] = []
+				#vgroups[joints[x]._name] = []
+				
+	
+		#print(self._numJoints)
+		#print(jnts)
+		#print(joints)
+		#print(self._joints)
+		#print(indexedJoints)
+		
+		#print(vgroups)
+		#jnts jointA.index, jointA.weight, jointB.index, jointB.weight
+		#for jnt in jnts:
+		#	print(jnt[0],jnt[1],jnt[2],jnt[3])
+	
+		# List of vertex groups, in the form (vertex, weight)
+		#vgroups = {}
+		#vgroups['Base'] = [
+		#	(0, 1.0), (1, 1.0), (2, 1.0), (3, 1.0),
+		#	(4, 0.5), (5, 0.5), (6, 0.5), (7, 0.5)]
+		#vgroups['Mid'] = [
+		#	(4, 0.5), (5, 0.5), (6, 0.5), (7, 0.5),
+		#	(8, 1.0), (9, 1.0), (10, 1.0), (11, 1.0)]
+		#vgroups['Tip'] = [(12, 1.0), (13, 1.0), (14, 1.0), (15, 1.0)]
 	 
 		# Create vertex groups, and add verts and weights
 		# First arg in assignment is a list, can assign several verts at once
@@ -6554,10 +7166,68 @@ class A3D2Skin:
 	 
 		# Give mesh object an armature modifier, using vertex groups but
 		# not envelopes
-		mod = ob.modifiers.new('MyRigModif', 'ARMATURE')
-		mod.object = rig
+		#mod = ob.modifiers.new('Armature', 'ARMATURE')
+		#mod.object = rig
+		#mod.use_bone_envelopes = False
+		#mod.use_vertex_groups = True
+		
+		#set mesh to child of rig
+		bpy.ops.object.mode_set(mode='OBJECT')
+		bpy.ops.object.select_all(action = 'DESELECT')
+		
+		for object in bpy.data.objects:
+			object.select = False
+		
+		ob.select = True
+		bpy.context.scene.objects.active = ob
+		rig.select = True
+		bpy.context.scene.objects.active = rig
+		
+		#rig.select = True
+		bpy.ops.object.parent_set(type='ARMATURE')
+		
+		mod = ob.modifiers[0]
 		mod.use_bone_envelopes = False
 		mod.use_vertex_groups = True
+	
+	def createRig2(self, name, origin, joints, indexedJoints, jointbindtrnsindex):
+		# Create armature and object
+		bpy.ops.object.add(type='ARMATURE', enter_editmode=True, location=origin)
+		ob = bpy.context.object
+		ob.show_x_ray = True
+		ob.name = name
+		amt = ob.data
+		amt.name = name+'Amt'
+		amt.show_axes = True
+		
+		bpy.ops.object.mode_set(mode='EDIT')
+		
+		#create each bone
+		for j in joints:
+			bone = amt.edit_bones.new(j._name)
+			bone.head = (0,0,0)
+			bone.tail = (0,0,1)
+			bone.use_connect = True
+		bpy.context.scene.update()
+		
+		#set parents for bones & positions
+		for j in joints:
+			bone = amt.edit_bones[j._name]
+			if j._parentId in indexedJoints:
+				#bones with parents
+				parent = amt.edit_bones[indexedJoints[j._parentId]._name]
+				bone.parent = parent
+			jointbindmat = jointbindtrnsindex[j._id]._bindPoseTransform.inverted()
+			pos = jointbindmat.to_translation()
+			axis, roll = mat3_to_vec_roll(jointbindmat.to_3x3())
+			bone.head = pos
+			bone.tail = pos + axis
+			bone.roll = roll
+			bone.use_connect = False
+		
+		bpy.ops.object.mode_set(mode='OBJECT')	
+		bpy.context.scene.update()
+		return ob
 		
 	def createRig(self, name, origin, boneTable):
 		# Create armature and object
@@ -6572,129 +7242,107 @@ class A3D2Skin:
 		amt.name = name+'Amt'
 		amt.show_axes = True
 		
-		#ob.matrix_world.inverted()*(Matrix.Translation(globalVector)+mw.to_3x3().to_4x4())
+		# Going from local space to world space is just a matter of concatenating the local matrix for a bone with its parent's world matrix
+		# (which can be computed the same way, recursively). A root bone's local and world matrices are identical.
 		
-		#mat = Matrix(ob.matrix_world) * Matrix(bone.matrix_local)
+		# bone.world_matrix = bone.local_matrix * bone.parent.world_matrix
+		
+		# Going the other way, from world space into local space, you concatenate the bone's world matrix with the 
+		# inverse of the parent's world matrix:
+		
+		# bone.local_matrix = bone.world_matrix * bone.parent.world_matrix.inverted()
+		
+		# The pose bone matrix_basis is computed from the difference between the bind pose and the animated pose:
+		
+		# matrix_basis = bind_pose_matrix.inverted() * animated_bone_matrix
 		
 		#object-space, obmat is armature
 		obmat = ob.matrix_world
-	 
-		# Create bones
+		
 		bpy.ops.object.mode_set(mode='EDIT')
 		
-		for (bname, pname, transform) in boneTable:
+		#print("jntbndtrns-start")
+		#for jntbndtrns in self._jointBindTransforms:
+		#	jmat = jntbndtrns._bindPoseTransform.getMatrix()
+		#	print(jmat.inverted())
+			#print(jntbndtrns._id)
+		#print("jntbndtrns-end")
+		
+		for (bname, pname, transform, ptransform, concatmat, boneid, pboneid, jointbindtrnsindex) in boneTable:
 			bone = amt.edit_bones.new(bname)
-			
-			# object-space
-			obmat = Matrix()
-			for b in bone.children:
-				obmat = self.mult_m4_m4m4(obmat, b.matrix)
-
-			#get world space
-			wmat = Matrix()
 			
 			mat = transform.getMatrix()
 			loc,rot,scale = mat.decompose()
 			
-			#pos = mat.to_translation()
-			#axis, roll = mat3_to_vec_roll(mat.to_3x3())
-			
-			#bone.head = pos
-			#bone.tail = pos + axis
-			#bone.roll = roll
-			
-			#rotationx, rotationy, rotationz
-			#as is in actionscript
-			#eu = rot.to_euler()
-			#rot = Matrix.Translation((eu.x,eu.y,eu.z))
-			
 			if pname:
 				parent = amt.edit_bones[pname]
+				
+				#print(mat)
+				pmat = ptransform.getMatrix()
+				#lmat = mat * pmat.inverted()
+				#lmat = lmat * concatmat
+				#tmat = lmat.inverted() * lmat
+				#tmat = jointbindtrnsindex[boneid]._bindPoseTransform.getMatrix() * lmat
+				#tmat.transpose()
+				
+				#world to local
+				lmat = mat * pmat.inverted()
+				
+				#parent multiply local
+				tmp = pmat * lmat
+				
+				tmat = jointbindtrnsindex[boneid]._bindPoseTransform.getMatrix() * tmp
+				#tmat.transpose()
+				
+				#world
+				#pmat = ptransform.getMatrix()
+				#obmat = self.mult_m4_m4m4(mat, pmat)
+				
+				#local
+				#pmat = ptransform.getMatrix()
+				#obmat = self.mult_m4_m4m4(mat, pmat.inverted())
+				
+				tmpmat = jointbindtrnsindex[boneid]._bindPoseTransform.getMatrix().inverted()
+				print(tmpmat)
+				
+				pos = tmpmat.to_translation()
+				axis, roll = mat3_to_vec_roll(tmpmat.to_3x3())
+				
+				
 				bone.parent = parent
-				bone.head = parent.tail
+				#bone.head = parent.tail
+				bone.head = pos
+				bone.tail = pos + axis
+				bone.roll = roll
 				bone.use_connect = True
-				wmat = self.mult_m4_m4m4(bone.parent.matrix, obmat)
+				#wmat = self.mult_m4_m4m4(bone.parent.matrix, obmat)
 				#convert location from global to local
 			else:
-				wmat = obmat
+				#wmat = obmat
 				print("rootbone")
-				bone.head = loc
-				#bone.head = (0,0,0)
-				#rot = Matrix.Translation((0,0,0))
-				#eu = rot.to_euler()
-				#rot = Matrix.Translation((eu.x,eu.y,eu.z))
-			
-			bone.tail = rot * Vector(loc) + bone.head
+				#bone.head = loc
+				tmpmat = jointbindtrnsindex[boneid]._bindPoseTransform.getMatrix().inverted()
+				print(tmpmat)
+				pos = tmpmat.to_translation()
+				axis, roll = mat3_to_vec_roll(tmpmat.to_3x3())
+
+				bone.head = pos
+				bone.tail = pos + axis
+				bone.roll = roll
+				bone.use_connect = False
+		
+			#bone.tail = rot * Vector(loc) + bone.head
 			bpy.context.scene.update()
 			
-			bpy.ops.object.mode_set(mode='OBJECT')
-			if pname:
-				mat = transform.getMatrix()
-			else:
-				mat = ob.matrix_world * amt.bones[bname].matrix_local
-			amt.bones[bname].matrix = mat.to_3x3()
-			bpy.ops.object.mode_set(mode='EDIT')
-
-			#mat4_to_loc_rot_size( loc, rot, size, obmat);
-			#mat3_to_vec_roll(rot, NULL, &angle );
-			#bone->roll=angle;
-			#// set head
-			#copy_v3_v3(bone->head, mat[3]);
-
-			#// set tail, don't set it to head because 0-length bones are not allowed
-			#float vec[3] = {0.0f, 0.5f, 0.0f};
-			#add_v3_v3v3(bone->tail, bone->head, vec);
+			#bpy.ops.object.mode_set(mode='OBJECT')
+			#if pname:
+			#	mat = transform.getMatrix()
+			#else:
+			#	mat = ob.matrix_world * amt.bones[bname].matrix_local
+			#amt.bones[bname].matrix = mat.to_3x3()
+			#bpy.ops.object.mode_set(mode='EDIT')
 		
-		#for (bname, pname, transform) in boneTable:        
-		#	bone = amt.edit_bones.new(bname)
-		#	
-		#	#loc, rot, scale = matrix.decompose()
-		#	matrix = transform.getMatrix()
-		#	loc,rot,sca = matrix.decompose()
-		#	#loc,rot,sca = transform.decomposeTransformation()
-		#	
-		#	if pname:
-		#		parent = amt.edit_bones[pname]
-		#		bone.parent = parent
-		#		bone.head = parent.tail
-		#		bone.use_connect = False
-		#		
-		#		#set head
-		#		#bone.head = loc
-		#		#set tail
-		#		#bone.tail = Vector((loc[0],loc[1]+0.5,loc[2]))
-		#		#set parent tail
-		#		#parent.tail = bone.head
-		#		
-		#		
-		#		#print(matrix)
-		#		#m1 = self.mult_m4_m4m4(bone.parent.matrix, obmat)
-		#		m1 = matrix + bone.parent.matrix
-		#		print(bname)
-		#		print(m1)
-		#		
-		#		#trans, rot, scale = matrix.decompose()
-		#		
-		#		#trans, rot, scale = parent.matrix.decompose()
-		#		
-		#		#convert parent from global to local
-		#		#mW = parent.matrix #armature space
-		#		#mW = parent.matrix #armature space
-		#		#imW = mW.copy() #copy 
-		#		#imW.invert() #create inverted
-		#		#m1 = mW * imW
-		#		#(trans, rot, scale) = m1.decompose()
-		#		
-		#		m1 = ob.matrix_world.inverted()*(Matrix.Translation(loc)+matrix.to_3x3().to_4x4())
-		#		trans,rot,scale = m1.decompose()				
-		#	else:
-		#		print("test")
-		#		#matrix = obmat
-		#		bone.head = (0,0,0)
-		#		rot = Matrix.Translation((0,0,0))	# identity matrix
-		#	bone.tail = rot * Vector(loc) + bone.head
-		#bpy.ops.object.mode_set(mode='OBJECT')
-				
+		bpy.ops.object.mode_set(mode='OBJECT')		
 		return ob
 
 	def createAnimation(self,arm_ob,animationClips,animationTracks):
@@ -6719,13 +7367,35 @@ class A3D2Skin:
 					bpy.context.scene.frame_set(x)
 					
 					mat = keyframe._transform.getMatrix()
-					pose_bone.matrix = mat
+					#pose_bone.matrix = mat
+					pose_bone.matrix_basis = mat
+					#pose_bone.matrix_basis = mat.to_3x3().to_4x4()
 					
 					pose_bone.keyframe_insert("location")
 			
-		bpy.context.scene.update()
+		bpy.context.scene.update()	
 
-
+	def poseRig(self, ob, poseTable):
+		bpy.context.scene.objects.active = ob
+		bpy.ops.object.mode_set(mode='POSE')
+	 
+		for (bname, transform, boneid, jointbindtrnsindex) in poseTable:
+			pbone = ob.pose.bones[bname]
+			#pbone.matrix = mat
+			#pbone.matrix = pbone.matrix_basis * mat
+			mat = transform.getMatrix()
+			invmat = transform.inverted()
+			
+			if pbone.parent != None:			
+				#matrix_basis = bind_pose_matrix.inverted() * animated_bone_matrix
+				#mbasis = jointbindtrnsindex[boneid]._bindPoseTransform.getMatrix() * mat
+				pbone.matrix_basis = mat.to_3x3().to_4x4()	
+				print(mat)
+				print(mat.to_3x3().to_4x4()	)
+				#pbone.matrix = mbasis
+				#print(mat)
+				#print(mbasis)
+		bpy.ops.object.mode_set(mode='OBJECT')
 # usage
 # 
 #pos = transform.to_translation()
@@ -6734,6 +7404,15 @@ class A3D2Skin:
 #bone.head = pos
 #bone.tail = pos + axis
 #bone.roll = roll
+
+def dae_matrix_to_mat4(mat):
+	# in DAE, matrices use columns vectors, (see comments in COLLADABUMathMatrix4.h)
+	# so here, to make a blender matrix, we swap columns and rows
+	newmat = Matrix()
+	for i in range(4):
+		for j in range(4):
+			newmat[i][j] = mat[j][i]
+	return newmat
 		
 def vec_roll_to_mat3(vec, roll):
 	target = Vector((0,1,0))
@@ -6746,6 +7425,8 @@ def vec_roll_to_mat3(vec, roll):
 	else:
 		updown = 1 if target.dot(nor) > 0 else -1
 		bMatrix = Matrix.Scale(updown, 3)
+		bMatrix[2][2] = 1.0
+		
 	rMatrix = Matrix.Rotation(roll, 3, nor)
 	mat = rMatrix * bMatrix
 	return mat
@@ -6896,7 +7577,7 @@ class A3D2Track:
 	def __init__(self,Config):
 		self._id = 0
 		self._keyframes = []
-		self._objectName = ""
+		self._objectName = None
 		
 		self._optionals = []
 		self._optmask = ""
@@ -6906,7 +7587,7 @@ class A3D2Track:
 	def reset(self):
 		self._id = 0
 		self._keyframes = []
-		self._objectName = ""
+		self._objectName = None
 		self._mskindex = 0
 		
 	def read(self,file,mask,mskindex):
@@ -6929,8 +7610,7 @@ class A3D2Track:
 		print(self._objectName)
 		
 	def write(self,file):
-		print("write A3D2Track")
-		file.write(pack("Q",self._id))
+		file.write(pack('>L',self._id))	
 		arr = A3DArray()
 		arr.write(file,len(self._keyframes))
 		for kframe in self._keyframes:
@@ -6970,7 +7650,6 @@ class A3D2Joint:
 		return self._optmask
 		
 	def read(self,file,mask,mskindex):
-		print("read A3D2Joint")
 		if mask[mskindex + self._mskindex] == "0":
 			self._boundBoxId = unpack(">L", file.read(calcsize(">L")))[0]
 		self._mskindex = self._mskindex + 1
@@ -7035,15 +7714,15 @@ class A3D2JointBindTransform:
 		self._mskindex = 0
 		
 	def read(self,file,mask,mskindex):
-		print("read A3D2JointBindTransform")
 		a3dtran = A3DTransform(self.Config)
 		a3dtran.read(file)
 		self._bindPoseTransform = a3dtran
-		self._id = unpack("Q", file.read(calcsize("Q")))[0]
+		self._id = unpack(">Q", file.read(calcsize(">Q")))[0]
 		return self
 		
 	def write(self,file):
-		print("write")
+		self._bindPoseTransform.write(file)
+		file.write(pack(">Q",self._id))
 
 class A3D2Keyframe:
 	def __init__(self,Config):
@@ -7069,7 +7748,6 @@ class A3D2Keyframe:
 		return self
 		
 	def write(self,file):
-		print("write")
 		file.write(pack('>f',self._time))
 		self._transform.write(file)
 

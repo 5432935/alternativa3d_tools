@@ -32,6 +32,13 @@ Installation Notes
 Changelog
 ---------
 
+### 1.2.1
+- P48L0 - Fix active uv layer
+- added in code for writing a3dskin
+- fixed a3dstring to set string empty string if set to None
+- Set Parent object3d to have identity matrix
+- Changed a3dmatrix default values to match alternativa3d transform identity()
+
 ### 1.2.0
 - Fixed certain classes not assigning read transform
 - Added a3d export Hierachy and included option to disable
